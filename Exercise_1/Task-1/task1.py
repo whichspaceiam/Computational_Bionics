@@ -1,130 +1,191 @@
+# Imports
 from scipy.integrate import solve_ivp
 import numpy as np
 import sympy as sp
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.interpolate import interp1d
 
-# Define numerical values
-l_O_val = 0.410  # length of the thigh [m]
-l_U_val = 0.415  # length of the shank [m]
+# define numerical values
+l_O_val = 0.410 # length of the tigh [m]
+l_U_val = 0.415 # length of the shank [m]
 
-m_body = 100  # mass of the body [kg]
+m_body = 100 # mass of the body [kg]
 
-mO_val = 9.73  # mass of the thigh [kg]
-mU_val = 5.07  # mass of the shank [kg]
-mF_val = 0.44  # mass of the foot [kg]
+mO_val = 9.73 # mass of the thigh [kg]
+mU_val = 5.07 # mass of the shank [kg]
+mF_val = 0.44 # mass of the foot [kg]
 
-g_val = 9.81  # gravity [m/s^2]
+g_val = 9.81 # gravity [m/s^2]
 
-# Define symbolic variables
-l_O, l_U, q1, q2, w1, w2 = sp.symbols('l_O l_U q1 q2 w_1 w_2')
-mO, mU, mF, g = sp.symbols('m_O m_U m_F g')
+# define symbolic variables
+l_O, l_U, q1, q2, t = sp.symbols('l_O l_U q1 q2 t')
+omega1, omega2 = sp.symbols(r'\omega_1 \omega_2')
+omega1_dot, omega2_dot = sp.symbols(r'\dot{\omega}_1 \dot{\omega}_2')
+mO, mU, mF = sp.symbols('m_O m_U m_F')
+g = sp.symbols('g')
+
+# define angles q as a function of time
+q1 = sp.Function('q1')(t)
+q2 = sp.Function('q2')(t)
+
+# define angular velocities w as the derivative of the angles
+w1 = q1.diff(t)
+w2 = q2.diff(t)
+
+# define angular accelerations as the derivative of the angular velocities
+dot_w1 = w1.diff(t)
+dot_w2 = w2.diff(t)
 
 # Position vectors
-r_SO = sp.Matrix([0.5 * l_O * sp.cos(q1), 0.5 * l_O * sp.sin(q1), 0])
-r_SU = sp.Matrix([
-    l_O * sp.cos(q1) + 0.5 * l_U * sp.cos(q2),
-    l_O * sp.sin(q1) + 0.5 * l_U * sp.sin(q2),
-    0
-])
-r_S = sp.Matrix([
-    l_O * sp.cos(q1) + l_U * sp.cos(q2),
-    l_O * sp.sin(q1) + l_U * sp.sin(q2),
-    0
-])
+r_SO = sp.Matrix([0.5 * l_O * sp.cos(q1), 0.5 * l_O *sp.sin(q1), 0])
+r_SU = sp.Matrix([l_O * sp.cos(q1) + 0.5 * l_U * sp.cos(q2), l_O * sp.sin(q1) + 0.5 * l_U * sp.sin(q2), 0])
+r_S = sp.Matrix([l_O * sp.cos(q1) + l_U * sp.cos(q2), l_O * sp.sin(q1) + l_U * sp.sin(q2), 0])
 
-# Velocity vectors
-v_SO = 0.5 * l_O * w1 * sp.Matrix([-sp.sin(q1), sp.cos(q1), 0])
-v_SU = (l_O * w1 * sp.Matrix([-sp.sin(q1), sp.cos(q1), 0]) +
-        0.5 * l_U * w2 * sp.Matrix([-sp.sin(q2), sp.cos(q2), 0]))
-v_S = (l_O * w1 * sp.Matrix([-sp.sin(q1), sp.cos(q1), 0]) +
-       l_U * w2 * sp.Matrix([-sp.sin(q2), sp.cos(q2), 0]))
+# Define velocity vectors
+v_SO = r_SO.diff(t)
+v_SU = r_SU.diff(t)
+v_S = r_S.diff(t)
 
 # Kinetic energy
 T1 = 0.5 * mO * v_SO.dot(v_SO)
 T2 = 0.5 * mU * v_SU.dot(v_SU)
 T3 = 0.5 * mF * v_S.dot(v_S)
 T = T1 + T2 + T3
-T = T.simplify()
 
 # Potential energy
 V1 = mO * g * r_SO[1]
 V2 = mU * g * r_SU[1]
 V3 = mF * g * r_S[1]
 V = V1 + V2 + V3
-V = V.simplify()
 
 # Lagrangian
 L = T - V
 
-# Derivatives
-dLdw1 = sp.diff(L, w1).simplify()
-dLdw2 = sp.diff(L, w2).simplify()
-dLdq1 = sp.diff(L, q1).simplify()
-dLdq2 = sp.diff(L, q2).simplify()
+# Derivatives: dL / d(dot_q_i)
+dL_domega_1 = sp.diff(L, q1.diff(t))
+dL_domega_2 = sp.diff(L, q2.diff(t))
 
-# Time derivatives of dL/dw_i
-w1_dot, w2_dot = sp.symbols('w1_dot w2_dot')
-ddt_dLdw1 = sp.diff(dLdw1, q1) * w1 + sp.diff(dLdw1, q2) * w2 + sp.diff(dLdw1, w1) * w1_dot + sp.diff(dLdw1, w2) * w2_dot
-ddt_dLdw2 = sp.diff(dLdw2, q1) * w1 + sp.diff(dLdw2, q2) * w2 + sp.diff(dLdw2, w1) * w1_dot + sp.diff(dLdw2, w2) * w2_dot
+# Time derivatives of the dL/d(dot_q_i)
+dL_domega_1_dt = dL_domega_1.diff(t)
+dL_domega_2_dt = dL_domega_2.diff(t)
+
+# Derivatives: dL / dq_i
+dL_dq_1 = sp.diff(L, q1)
+dL_dq_2 = sp.diff(L, q2)
+
+# Substitute the values of the parameters
+subsDict = {q1.diff(t): omega1,
+            q2.diff(t): omega2,
+            q1.diff(t, 2): omega1_dot,
+            q2.diff(t, 2): omega2_dot}
+
+dL_domega_1_dt = dL_domega_1_dt.subs(subsDict).simplify()
+dL_domega_2_dt = dL_domega_2_dt.subs(subsDict).simplify()
+dL_dq_1 = dL_dq_1.subs(subsDict).simplify()
+dL_dq_2 = dL_dq_2.subs(subsDict).simplify()
+
+M1, M2 = sp.symbols('M_1 M_2')
 
 # Equations of motion
-eq1 = ddt_dLdw1 - dLdq1
+eq1 = dL_domega_1_dt - dL_dq_1 - M1
+eq2 = dL_domega_2_dt - dL_dq_2 - M2
 
-eq2 = ddt_dLdw2 - dLdq2
+# Solve for omega1_dot and omega2_dot
+sol = sp.solve([eq1, eq2], (omega1_dot, omega2_dot))
 
-# Substitute constants
-eq1 = eq1.subs({l_O: l_O_val, l_U: l_U_val, mO: mO_val, mU: mU_val, mF: mF_val, g: g_val})
-eq2 = eq2.subs({l_O: l_O_val, l_U: l_U_val, mO: mO_val, mU: mU_val, mF: mF_val, g: g_val})
+dot_omega1 = sol[omega1_dot].simplify()
+dot_omega2 = sol[omega2_dot].simplify()
 
-# Solve for angular accelerations
-w1_dot_sol = sp.solve(eq1, w1_dot)[0]
-w2_dot_sol = sp.solve(eq2, w2_dot)[0]
-
-# Convert to numerical functions
-domega1 = sp.lambdify((q1, q2, w1, w2), w1_dot_sol, 'numpy')
-domega2 = sp.lambdify((q1, q2, w1, w2), w2_dot_sol, 'numpy')
+# Define the functions
+func1 = sp.lambdify((q1, q2, omega1, omega2, M1, M2), dot_omega1, 'numpy')
+func2 = sp.lambdify((q1, q2, omega1, omega2, M1, M2), dot_omega2, 'numpy')
 
 # Read gait data
 filename = 'gait_data.xls'
 gait_data = pd.read_excel(filename, engine='xlrd')
 
 # Extract gait data
-gait_step = np.array(gait_data["gait_%"])
+gait_step = np.array(gait_data["gait_%"]) / 100
 GRFz = np.array(gait_data["GRFz[%BW]"]) * m_body * g_val / 100
 GRFx = gait_data["GRFx[%BW]"] * m_body * g_val / 100
-MX_H = np.array(gait_data["MX_H[Nm/kg]"])
-MX_K = np.array(gait_data["MX_K[Nm/kg]"])
-q1_gait = np.deg2rad(np.array(gait_data["Flex_Ext_H[deg]"])) + 3 / 2 * np.pi
-q2_gait = q1_gait - np.deg2rad(np.array(gait_data["Flex_Ext_K[deg]"]))
+MX_H = np.array(gait_data["MX_H[Nm/kg]"]) * m_body
+MX_K = np.array(gait_data["MX_K[Nm/kg]"]) * m_body
+q1_gait = np.deg2rad(np.array(gait_data["Flex_Ext_H[deg]"])) # + 3 / 2 * np.pi
+q2_gait = np.deg2rad(np.array(gait_data["Flex_Ext_K[deg]"]))
+# q2_gait = q1_gait - np.deg2rad(np.array(gait_data["Flex_Ext_K[deg]"]))
 
-# Interpolate the moment data
-MX_H_interp = interp1d(gait_step, MX_H, kind='cubic')
-MX_K_interp = interp1d(gait_step, MX_K, kind='cubic')
-
-# Time step
 dt = 0.01
-t_eval = np.arange(0, len(gait_step) * dt, dt)
+t_start = 0
+t_end = 1
+t_eval = np.arange(t_start, t_end, dt)
 
-# Initial conditions
-q1_0 = q1_gait[0]
-q2_0 = q2_gait[0]
+# initial conditions
+q1_0 = 3/2 * np.pi #q1_gait[0] # initial angle of the thigh
+q2_0 = q1_0 #q2_gait[0] # initial angle of the shank
+
 omega1_0 = 0
 omega2_0 = 0
 
-# ODE system
-def ode_system(t, y):
-    q1, q2, omega1, omega2 = y
+M1_0 = 0
+M2_0 = 0
+
+y0 = [omega1_0, omega2_0, q1_0, q2_0, M1_0, M2_0]
+
+# Define the function for the ODE solver
+def leg_model(t, y):
+    omega1, omega2, q1, q2, M1, M2 = y
+
+    # Compute joint moments
+    M1 = np.interp(t, gait_step, MX_H)
+    M2 = np.interp(t, gait_step, MX_K)
+
+    domega1 = func1(q1, q2, omega1, omega2, M1, M2)
+    domega2 = func2(q1, q2, omega1, omega2, M1, M2)
 
     dq1 = omega1
     dq2 = omega2
-    domega1 = domega1(q1, q2, omega1, omega2)
-    domega2 = domega2(q1, q2, omega1, omega2)
 
-    return [dq1, dq2, domega1, domega2]
+    dM1 = -1 * omega1
+    dM2 = -1 * omega2
 
-# Solve ODEs
-sol = solve_ivp(ode_system, [0, len(gait_step) * dt], [q1_0, q2_0, omega1_0, omega2_0], t_eval=t_eval)
+    return [domega1, domega2, dq1, dq2, M1, M2]
 
-print("Done")
+solution = solve_ivp(leg_model, (t_start, t_end), y0, t_eval=t_eval, method='RK45')
+
+t = solution.t
+omega1 = solution.y[0]
+omega2 = solution.y[1]
+q1 = solution.y[2] 
+q2 = solution.y[3] 
+M1 = solution.y[4]
+M2 = solution.y[5]
+
+# use subplots to plot the results for q, omega, and M
+fig, axs = plt.subplots(3, 1, figsize=(10, 10))
+
+# add title
+fig.suptitle('Leg model', fontsize=16, fontweight='bold', y=0.92)
+
+axs[0].plot(t, q1, label='q1')
+axs[0].plot(t, q2, label='q2')
+axs[0].set_xlabel('Time [s]')
+axs[0].set_ylabel('Angle [rad]')
+axs[0].grid()
+axs[0].legend()
+
+axs[1].plot(t, omega1, label='omega1')
+axs[1].plot(t, omega2, label='omega2')
+axs[1].set_xlabel('Time [s]')
+axs[1].set_ylabel('Angular velocity [rad/s]')
+axs[1].grid()
+axs[1].legend()
+
+axs[2].plot(t, M1, label='M1')
+axs[2].plot(t, M2, label='M2')
+axs[2].set_xlabel('Time [s]')
+axs[2].set_ylabel('Torque [Nm]')
+axs[2].grid()
+axs[2].legend()
+
+fig.get_tight_layout()
+plt.show()
